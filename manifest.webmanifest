@@ -1,0 +1,16 @@
+{
+  "name": "YERIM 인쇄물 제작관리시스템",
+  "short_name": "인쇄물 관리",
+  "description": "홍보인쇄물 제작관리규정 기준 부서별 제출 현황과 미이행 공개",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f5f7",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
