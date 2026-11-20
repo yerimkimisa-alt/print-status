@@ -60,6 +60,109 @@ function actionsFor(p, it, g) {
   return `<div class="acts">${out.join("")}</div>`;
 }
 
+// ── 부서별 일정 레인: 열 = 기한 날짜, 행 = 부서, 가운데 TODAY ──
+const DEPT_FULL = { "R&D": "라이프스타일디자인센터", "영업": "영업본부", "승인협의체": "승인협의체 (3인 합의)", "그래픽디자인팀": "마케팅부 그래픽디자인팀" };
+// 이 단계가 밀리면 바로 막히는 다음 단계 (규정 별표 1 순서)
+const NEXT = { "-": "1 킥오프", "1": "2 자료 제출", "2": "3 ★ 기획·문안 확정", "3": "4 3D 자산 결정", "0": "6 전체 작업",
+  "4": "5 ★ 20p 템플릿 승인", "5": "6 전체 작업", "6": "6-1 교차 검수", "6-1": "7 컬러 테스트", "7": "8 인쇄", "8": "배포·출시", "9": "" };
+
+function dueText(s, it) {
+  if (s.color === "blue") return it.submittedAt ? `${md(it.submittedAt)} 처리` : "완료";
+  if (s.color === "red") return `${s.over}영업일 경과`;
+  return s.left === 0 ? "오늘 마감" : `${s.left}영업일 남음`;
+}
+
+function tcard(p, it, s) {
+  const step = it.step === "-" ? "제작 요청" : `${it.step}단계`;
+  const owner = it.dept === "승인협의체" ? "3인 합의" : (p.owners?.[it.dept] || "");
+  return `<div class="tcard st-${s.color}" tabindex="0">
+    <div class="tc-top"><i class="dot ${s.color}"></i><span>${step}${it.kind === "gate" ? " · 승인" : ""}</span><b class="tc-due">${dueText(s, it)}</b></div>
+    <div class="tc-title">${esc(it.title)}</div>
+    <div class="tc-who">${owner ? esc(owner) : '<span class="unset">담당자 미지정</span>'}</div>
+    <div class="tc-more">
+      <dl>
+        <dt>소속</dt><dd>${DEPT_FULL[it.dept]}</dd>
+        <dt>기한</dt><dd>${md(it.deadline)} · ${weekLabel(it.week)}</dd>
+        <dt>제출물</dt><dd>${esc(it.form)}</dd>
+        <dt>상태</dt><dd>${STATUS[it.status]}${it.nudges?.length ? ` · 독촉 ${it.nudges.length}회` : ""}</dd>
+        ${NEXT[it.step] && s.color !== "blue" ? `<dt>밀리면</dt><dd class="hit">${NEXT[it.step]} 지연</dd>` : ""}
+        ${it.plan ? `<dt>처리 계획</dt><dd>${esc(it.plan)}</dd>` : s.escalate ? `<dt>처리 계획</dt><dd class="hit">미입력 · 본부장 보고 대상</dd>` : ""}
+        ${it.path ? `<dt>경로</dt><dd class="path">${esc(it.path)}</dd>` : ""}
+      </dl>
+      ${actionsFor(p, it, s)}
+    </div>
+  </div>`;
+}
+
+function renderLanes(p, a) {
+  const dates = [...new Set(p.items.map((it) => it.deadline))].sort();
+  const t = state.today;
+  const ti = dates.findIndex((d) => d >= t); // TODAY 는 이 날짜 열 앞에 놓임
+  const cols = [];
+  dates.forEach((d, i) => { if (i === (ti < 0 ? dates.length : ti)) cols.push({ today: true }); cols.push({ d }); });
+  if (ti < 0) cols.push({ today: true });
+  const lanes = DEPTS.filter((d) => state.dept === "전체" || d === state.dept);
+  // 한 칸에 카드가 몰리면 두 장씩 옆으로 펼쳐 레인 높이를 카드 2장 안으로 묶음
+  const per = (dept, d) => p.items.filter((it) => it.dept === dept && it.deadline === d).length;
+  cols.forEach((c) => { if (!c.today) c.n = Math.max(1, Math.ceil(Math.max(...lanes.map((l) => per(l, c.d))) / 2)); });
+  const tpl = cols.map((c) => (c.today ? "64px" : `${c.n * 204 + 8}px`)).join(" ");
+  const head = cols.map((c, i) => c.today
+    ? `<div class="ln-today" style="grid-column:${i + 2};grid-row:1/${lanes.length + 2}"><span>TODAY<br>${md(t)}</span></div>`
+    : `<div class="ln-head ${c.d < t ? "past" : ""} ${c.d === t ? "is-today" : ""}" style="grid-column:${i + 2}" data-col="${i}">
+        <b>${md(c.d)}</b><span>${c.d === t ? "오늘 마감" : days(t, c.d) > 0 ? `D-${days(t, c.d)}일` : `${-days(t, c.d)}일 지남`}</span></div>`).join("");
+  const rows = lanes.map((dept, r) => {
+    const reds = a.reds.filter((x) => x.it.dept === dept).length;
+    const owner = dept === "승인협의체" ? "3인 합의" : (p.owners?.[dept] || "");
+    const label = `<div class="ln-label" style="grid-row:${r + 2}"><b>${dept}</b><span>${DEPT_FULL[dept]}</span>
+      <span class="${owner ? "" : "unset"}">${owner ? esc(owner) : "담당자 미지정"}</span>${reds ? `<em>미이행 ${reds}</em>` : ""}</div>`;
+    const cells = cols.map((c, i) => c.today ? "" : `<div class="ln-cell ${c.d < t ? "past" : ""}" style="grid-column:${i + 2};grid-row:${r + 2};--n:${c.n}" data-col="${i}">
+      ${a.rows.filter(({ it }) => it.dept === dept && it.deadline === c.d).map(({ it, s }) => tcard(p, it, s)).join("")}</div>`).join("");
+    return label + cells;
+  }).join("");
+  return `<section class="panel lanes">
+    <header><h2>부서별 제출 일정</h2><span class="hint">좌우로 끌어서 이동 · 카드에 마우스를 올리면 상세</span><span class="sp"></span>
+      <button class="btn xs sec" id="to-today">TODAY로</button></header>
+    <div class="ln-scroll" id="lnScroll"><div class="ln-grid" style="grid-template-columns:var(--lw,168px) ${tpl};grid-template-rows:auto repeat(${lanes.length},auto)">
+      <div class="ln-corner"></div>${head}${rows}</div></div>
+  </section>`;
+}
+
+// 드래그 이동 · 가운데 열 확대 · TODAY 가운데 맞춤
+function setupLanes() {
+  const el = $("#lnScroll"); if (!el) return;
+  const lw = () => el.querySelector(".ln-corner").offsetWidth; // 왼쪽 부서 이름 칸 너비
+  const center = () => {
+    const m = el.querySelector(".ln-today"); if (!m) return;
+    el.scrollLeft = m.offsetLeft + m.offsetWidth / 2 - (el.clientWidth + lw()) / 2;
+  };
+  if (state.lnLeft == null) center(); else el.scrollLeft = state.lnLeft;
+  const focus = () => {
+    const mid = el.scrollLeft + (el.clientWidth + lw()) / 2;
+    el.querySelectorAll(".ln-head,.ln-cell").forEach((c) => {
+      const d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid) / 360;
+      c.style.setProperty("--k", Math.max(0, 1 - d).toFixed(3)); // 가운데일수록 1
+    });
+  };
+  let raf = 0;
+  el.addEventListener("scroll", () => { state.lnLeft = el.scrollLeft; cancelAnimationFrame(raf); raf = requestAnimationFrame(focus); });
+  focus();
+  // 마우스 드래그로 좌우 이동 (터치·트랙패드는 기본 스크롤). 리스너는 매번 새로 그려지는 el 에만 붙임.
+  let sx = 0, sl = 0, drag = false;
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "mouse" || e.button !== 0 || e.target.closest("button")) return;
+    sx = e.clientX; sl = el.scrollLeft; drag = true;
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const dx = e.clientX - sx;
+    if (Math.abs(dx) > 4 && !el.classList.contains("dragging")) { el.classList.add("dragging"); el.setPointerCapture(e.pointerId); }
+    if (el.classList.contains("dragging")) el.scrollLeft = sl - dx;
+  });
+  const end = () => { drag = false; el.classList.remove("dragging"); };
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+  $("#to-today").onclick = () => { el.scrollTo({ left: 0, behavior: "instant" }); state.lnLeft = null; center(); focus(); };
+}
+
 function renderSide() {
   const p = current();
   const projects = state.projects.map((x) => {
@@ -145,6 +248,7 @@ function renderMain() {
       <div class="kpi ${a.delay ? "alarm" : ""}"><div class="l">예상 납품 지연</div><div class="v num">${a.delay}<small>일</small></div><div class="s">가장 오래 밀린 항목 기준</div></div>
       <div class="kpi"><div class="l">기한 준수율</div><div class="v num">${a.rate === null ? "–" : a.rate}<small>${a.rate === null ? "" : "%"}</small></div><div class="s">${a.all.ok}/${a.all.due}건 · KPI 20% 반영</div></div>
     </div>
+    ${renderLanes(p, a)}
     <div class="cols">
       <section class="panel shame">
         <header><h2>미이행 공개</h2><span class="hint">기한이 지났는데 제출하지 않은 항목 · 전 직원 공개 (규정 제19·21조)</span><span class="sp"></span><b class="num">${a.reds.length}건</b></header>
@@ -166,6 +270,7 @@ function renderMain() {
         <thead><tr><th></th><th>단계</th><th>항목 · 양식</th><th>부서</th><th>담당자</th><th>기한</th><th>상태</th><th class="r">남은 기간</th><th></th></tr></thead>
         <tbody>${list || `<tr><td colspan="9" class="empty">조건에 맞는 항목 없음</td></tr>`}</tbody></table></div>
     </section>`;
+  setupLanes();
 }
 
 function render() { renderSide(); renderMain(); }
@@ -200,8 +305,8 @@ document.addEventListener("click", (e) => {
       const v = prompt(`${d} 부서 담당자 (제7조)`, p.owners[d] || ""); if (v === null) break; p.owners[d] = v.trim();
     }
     save(); render();
-  } else if (el.dataset.id) { state.selected = el.dataset.id; render(); }
-  else if (el.dataset.dept) { state.dept = el.dataset.dept; render(); }
+  } else if (el.dataset.id) { state.selected = el.dataset.id; state.lnLeft = null; render(); }
+  else if (el.dataset.dept) { state.dept = el.dataset.dept; state.lnLeft = null; render(); }
   else if (el.dataset.status) { state.status = el.dataset.status; renderMain(); }
   else if (el.dataset.act) act(el.dataset.act, el.dataset.item);
 });
@@ -210,17 +315,17 @@ document.addEventListener("input", (e) => {
   state.q = e.target.value; renderMain();
   const q = $("#q"); q.focus(); q.setSelectionRange(q.value.length, q.value.length);
 });
-$("#today").addEventListener("change", (e) => { state.today = e.target.value || realToday(); render(); });
+$("#today").addEventListener("change", (e) => { state.today = e.target.value || realToday(); state.lnLeft = null; render(); });
 $("#viewer").addEventListener("change", (e) => { state.viewer = e.target.value; render(); });
 $("#reset").addEventListener("click", () => {
   if (!confirm("예시 데이터로 되돌릴까요? 이 브라우저에 저장한 내용이 지워짐.")) return;
-  state.projects = seed(); state.selected = state.projects[0].id; state.today = realToday(); $("#today").value = state.today; save(); render();
+  state.projects = seed(); state.selected = state.projects[0].id; state.today = realToday(); state.lnLeft = null; $("#today").value = state.today; save(); render();
 });
 $("#newform").addEventListener("submit", (e) => {
   e.preventDefault();
   const f = new FormData(e.target);
   const p = makeProject(f.get("name").trim(), "도어", f.get("dday"));
-  state.projects.push(p); state.selected = p.id; save(); render(); e.target.reset();
+  state.projects.push(p); state.selected = p.id; state.lnLeft = null; save(); render(); e.target.reset();
   $("#newdlg").close();
 });
 $("#newbtn").addEventListener("click", () => $("#newdlg").showModal());
