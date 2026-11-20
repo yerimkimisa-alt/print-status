@@ -88,7 +88,7 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .panel>header .hint{font-size:11.5px;color:var(--muted)}
 .panel>header .sp{flex:1}
 .panel>header b{font-size:13px}
-.panel.shame{outline:1.5px solid var(--red);outline-offset:-1.5px}
+.panel.shame{border:1.5px solid var(--red)} /* outline 은 sticky 표 머리글에 가려져 끊김 → border 로 그림 */
 .panel.shame>header h2{color:var(--red);display:flex;align-items:center;gap:8px}
 .panel.shame>header h2::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--red);animation:blink 1.1s infinite}
 .panel.shame>header b{background:var(--red);color:#fff;border-radius:9999px;padding:3px 11px}
