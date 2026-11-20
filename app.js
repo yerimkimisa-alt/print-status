@@ -332,7 +332,7 @@ $("#newbtn").addEventListener("click", () => $("#newdlg").showModal());
 $("#cancel").addEventListener("click", () => $("#newdlg").close());
 
 // 앱 설치: 서비스워커 등록 + 브라우저가 설치 가능하다고 알려주면 "앱 설치" 버튼을 보여줌
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(() => {});
 let installEvt = null;
 addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvt = e; $("#install").hidden = false; });
 addEventListener("appinstalled", () => { $("#install").hidden = true; });
